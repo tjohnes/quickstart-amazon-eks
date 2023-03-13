@@ -321,7 +321,10 @@ Conditions:
   UsingDefaultBucket: !Equals [!Ref QSS3BucketName, aws-quickstart]
   GenerateClusterName: !Equals [!Ref EKSClusterName, '']
   UseKeyPair: !Not [!Equals [!Ref KeyPairName, '']]
-  UseUnmanagedNodeGroup: !Equals [!Ref NodeGroupType, Unmanaged]
+  CreateNodeGroup: !Equals [~~/<ConfigSetName>/default-nodegroup/CreateNodeGroup~~, 'Yes']
+  CreateUnmanagedNodeGroup: !And
+    - !Equals [!Ref NodeGroupType, Unmanaged]
+    - !Condition CreateNodeGroup
 Resources:
   BastionEksPermissions:
     Type: AWS::IAM::Policy
@@ -431,6 +434,7 @@ Resources:
         EC2MetadataHttpTokens: ~~/<ConfigSetName>/default-nodegroup/EC2MetadataHttpTokens~~
         MaxNodesUnavailable: ~~/<ConfigSetName>/default-nodegroup/MaxNodesUnavailable~~
         MaxNodesUnavailablePercentage: ~~/<ConfigSetName>/default-nodegroup/MaxNodesUnavailablePercentage~~
+        CreateNodeGroup: ~~/<ConfigSetName>/default-nodegroup/CreateNodeGroup~~
   WindowsSupportNodeGroupStack:
     Type: AWS::CloudFormation::Stack
     Condition: EnableWindows
@@ -536,8 +540,8 @@ Resources:
       Parameters:
         EksClusterName: !GetAtt EKSControlPlane.Outputs.EKSName
         KubernetesVersion: ~~/<ConfigSetName>/controlplane/KubernetesVersion~~
-        OIDCProviderArn: !GetAtt AwsNodeIrsaStack.Outputs.OIDCProviderArn
-        OIDCProviderEndpoint: !GetAtt AwsNodeIrsaStack.Outputs.OIDCProviderEndpoint
+        OIDCProviderArn: !GetAtt EKSControlPlane.Outputs.OIDCProviderArn
+        OIDCProviderEndpoint: !GetAtt EKSControlPlane.Outputs.OIDCProviderEndpoint
         PrometheusEnabled: !If [EnablePrometheus, 'true', 'false']
         PrometheusNamespace: !FindInMap [Config, Namespace, Prometheus]
   MetricsServerStack:
@@ -555,8 +559,8 @@ Resources:
           S3Bucket: !If [UsingDefaultBucket, !Sub '${QSS3BucketName}-${AWS::Region}', !Ref QSS3BucketName]
       Parameters:
         EksClusterName: !GetAtt EKSControlPlane.Outputs.EKSName
-        OIDCProviderArn: !GetAtt AwsNodeIrsaStack.Outputs.OIDCProviderArn
-        OIDCProviderEndpoint: !GetAtt AwsNodeIrsaStack.Outputs.OIDCProviderEndpoint
+        OIDCProviderArn: !GetAtt EKSControlPlane.Outputs.OIDCProviderArn
+        OIDCProviderEndpoint: !GetAtt EKSControlPlane.Outputs.OIDCProviderEndpoint
   EfsStack:
     Type: AWS::CloudFormation::Stack
     Condition: EnableEfs
@@ -710,8 +714,8 @@ Resources:
         - S3Region: !If [UsingDefaultBucket, !Ref AWS::Region, !Ref QSS3BucketRegion]
           S3Bucket: !If [UsingDefaultBucket, !Sub '${QSS3BucketName}-${AWS::Region}', !Ref QSS3BucketName]
       Parameters:
-        OIDCProviderArn: !GetAtt AwsNodeIrsaStack.Outputs.OIDCProviderArn
-        OIDCProviderEndpoint: !GetAtt AwsNodeIrsaStack.Outputs.OIDCProviderEndpoint
+        OIDCProviderArn: !GetAtt EKSControlPlane.Outputs.OIDCProviderArn
+        OIDCProviderEndpoint: !GetAtt EKSControlPlane.Outputs.OIDCProviderEndpoint
         EksClusterName: !GetAtt EKSControlPlane.Outputs.EKSName
         VpcId: !Ref VPCID
   GenerateClusterName:
@@ -879,6 +883,7 @@ Resources:
       ClusterName: !GetAtt EKSControlPlane.Outputs.EKSName
   AwsNodeIrsaStack:
     Type: AWS::CloudFormation::Stack
+    Condition: CreateNodeGroup
     DependsOn: NodeGroupStack
     Properties:
       TemplateURL: !Sub
@@ -900,16 +905,16 @@ Resources:
             {
               "Effect": "Allow",
               "Principal": {
-                "Federated": "${AwsNodeIrsaStack.Outputs.OIDCProviderArn}"
+                "Federated": "${EKSControlPlane.Outputs.OIDCProviderArn}"
               },
               "Action": "sts:AssumeRoleWithWebIdentity",
               "Condition": {
                 "StringEquals": {
-                  "${AwsNodeIrsaStack.Outputs.OIDCProviderEndpoint}:aud": [
+                  "${EKSControlPlane.Outputs.OIDCProviderEndpoint}:aud": [
                     "sts.amazonaws.com",
                     "sts.${AWS::Region}.amazonaws.com"
                   ],
-                  "${AwsNodeIrsaStack.Outputs.OIDCProviderEndpoint}:sub": "system:serviceaccount:kube-system:ebs-csi-controller-sa"
+                  "${EKSControlPlane.Outputs.OIDCProviderEndpoint}:sub": "system:serviceaccount:kube-system:ebs-csi-controller-sa"
                 }
               }
             }
@@ -959,7 +964,7 @@ Resources:
       ServiceAccountRoleArn: !GetAtt AmazonEksEbsCsiDriverRole.Arn
   AwsNodeTerminationHandlerRole:
     Type: AWS::IAM::Role
-    Condition: UseUnmanagedNodeGroup
+    Condition: CreateUnmanagedNodeGroup
     Properties:
       AssumeRolePolicyDocument: !Sub |
         {
@@ -968,16 +973,16 @@ Resources:
             {
               "Effect": "Allow",
               "Principal": {
-                "Federated": "${AwsNodeIrsaStack.Outputs.OIDCProviderArn}"
+                "Federated": "${EKSControlPlane.Outputs.OIDCProviderArn}"
               },
               "Action": "sts:AssumeRoleWithWebIdentity",
               "Condition": {
                 "StringEquals": {
-                  "${AwsNodeIrsaStack.Outputs.OIDCProviderEndpoint}:aud": [
+                  "${EKSControlPlane.Outputs.OIDCProviderEndpoint}:aud": [
                     "sts.amazonaws.com",
                     "sts.${AWS::Region}.amazonaws.com"
                   ],
-                  "${AwsNodeIrsaStack.Outputs.OIDCProviderEndpoint}:sub": "system:serviceaccount:kube-system:aws-node-termination-handler"
+                  "${EKSControlPlane.Outputs.OIDCProviderEndpoint}:sub": "system:serviceaccount:kube-system:aws-node-termination-handler"
                 }
               }
             }
@@ -991,7 +996,7 @@ Resources:
     # https://artifacthub.io/packages/helm/aws/aws-node-termination-handler
     # https://github.com/aws/eks-charts/tree/master/stable/aws-node-termination-handler
     Type: AWSQS::Kubernetes::Helm
-    Condition: UseUnmanagedNodeGroup
+    Condition: CreateUnmanagedNodeGroup
     Properties:
       ClusterID: !GetAtt EKSControlPlane.Outputs.EKSName
       Namespace: kube-system
@@ -1034,16 +1039,16 @@ Resources:
             {
               "Effect": "Allow",
               "Principal": {
-                "Federated": "${AwsNodeIrsaStack.Outputs.OIDCProviderArn}"
+                "Federated": "${EKSControlPlane.Outputs.OIDCProviderArn}"
               },
               "Action": "sts:AssumeRoleWithWebIdentity",
               "Condition": {
                 "StringEquals": {
-                  "${AwsNodeIrsaStack.Outputs.OIDCProviderEndpoint}:aud": [
+                  "${EKSControlPlane.Outputs.OIDCProviderEndpoint}:aud": [
                     "sts.amazonaws.com",
                     "sts.${AWS::Region}.amazonaws.com"
                   ],
-                  "${AwsNodeIrsaStack.Outputs.OIDCProviderEndpoint}:sub": "system:serviceaccount:kube-system:efs-csi-controller-sa"
+                  "${EKSControlPlane.Outputs.OIDCProviderEndpoint}:sub": "system:serviceaccount:kube-system:efs-csi-controller-sa"
                 }
               }
             }

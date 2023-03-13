@@ -47,6 +47,7 @@ Metadata:
           - EC2MetadataHttpTokens
           - MaxNodesUnavailable
           - MaxNodesUnavailablePercentage
+          - CreateNodeGroup
       - Label:
           default: Bastion configuration
         Parameters:
@@ -142,6 +143,8 @@ Metadata:
         default: Max nodes unavailable
       MaxNodesUnavailablePercentage:
         default: Max nodes unavailable percentage
+      CreateNodeGroup:
+        default: Create node group
 Parameters:
   ConfigSetName:
     Type: String
@@ -443,6 +446,14 @@ Parameters:
     MinValue: 0
     MaxValue: 100
     Default: 0
+  CreateNodeGroup:
+    Type: String
+    Description: >-
+      If set to "No" the node group stack will create just the Security Group
+      skipping the node group. This is useful if you manage the node group with
+      third party integration, such as Spot.io.
+    AllowedValues: ['Yes', 'No']
+    Default: 'Yes'
 Mappings:
   KubernetesVersion:
   # https://docs.aws.amazon.com/eks/latest/userguide/install-kubectl.html
@@ -690,6 +701,12 @@ Resources:
       Type: String
       Name: !Sub /quickstart/amazon-eks/${ConfigSetName}/default-nodegroup/MaxNodesUnavailablePercentage
       Value: !Sub '{ "Value": "${MaxNodesUnavailablePercentage}" }'
+  CreateNodeGroupParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Type: String
+      Name: !Sub /quickstart/amazon-eks/${ConfigSetName}/default-nodegroup/CreateNodeGroup
+      Value: !Sub '{ "Value": "${CreateNodeGroup}" }'
 Outputs:
   ConfigSetName:
     Description: Config set name.
