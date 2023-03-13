@@ -1063,16 +1063,16 @@ Resources:
             {
               "Effect": "Allow",
               "Principal": {
-                "Federated": "${EKSControlPlane.Outputs.OIDCProviderArn}"
+                "Federated": "${AwsNodeIrsaStack.Outputs.OIDCProviderArn}"
               },
               "Action": "sts:AssumeRoleWithWebIdentity",
               "Condition": {
                 "StringEquals": {
-                  "${EKSControlPlane.Outputs.OIDCProviderEndpoint}:aud": [
+                  "${AwsNodeIrsaStack.Outputs.OIDCProviderEndpoint}:aud": [
                     "sts.amazonaws.com",
                     "sts.${AWS::Region}.amazonaws.com"
                   ],
-                  "${EKSControlPlane.Outputs.OIDCProviderEndpoint}:sub": "system:serviceaccount:kube-system:efs-csi-controller-sa"
+                  "${AwsNodeIrsaStack.Outputs.OIDCProviderEndpoint}:sub": "system:serviceaccount:kube-system:efs-csi-controller-sa"
                 }
               }
             }
